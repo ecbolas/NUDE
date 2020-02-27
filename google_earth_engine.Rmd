@@ -1,0 +1,65 @@
+---
+title: "google_earth_engine"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Uses
+- fire index, run-off, wetness, greeness/deforestation, migration
+- pulls data from a lot of satellites
+- a lot of the imagery can be pre-processed
+- Depending on your question, what satellite to use?
+  - spatial resolution (0.5m - 1km)
+  - spectral resolution
+  - temporal resolution (often trades off with spatial resolution)
+    - landsat is 30 m, get an image every 2 weeks
+  - $ vs. open source
+   - everything in GEE is open source, but LiDAR is pricey
+  
+#Application
+*GEE Explorer*
+- you can do quick checks of what data are available, you can bring in your own shapefiles, too
+- this is quick and dirty stuff
+
+*GEE Code Editor*
+- the better option
+- middle: Run applies to everything in that window, comment it out if you don't want it to run
+- left: assets is a way to manage maps between scripts, scripts includes example scripts
+- right: inspector is a way to investigate pixels
+  - get link allows you to send a URL to collaborators
+- GEE data catalogue to decide what raster data sets to use
+
+*Java script*
+- "//" to comment
+- "=" for the get
+- purple font is built-in GGE functions
+- () used to add parameters
+- [] for a string or list
+- ; to close an argument
+- "var" tells it you are giving a variable name
+
+*Practice*
+- a composite is built of several satellite images taken of one spot, so when pulled in you lable it "imagecollection"
+- any vector pulled into GEE is a geometry
+- any raster is called an image, need a start and end date for the composite, tell it the bounds are the vector geometery that we set
+- calculate median value of every pixel in the region of interest
+- select the 3 bands you want to show and tell us where you want the map to zoom
+- when you've made the thing, you can save it in GEE (asset) or in googledrive to then use in R
+
+pull in the tif from GEE
+```{r}
+library(raster)
+
+#upload GEE tiff
+landsat<- raster("") #get filename from googledrive
+plot(landsat)
+
+```
+
+  
+   

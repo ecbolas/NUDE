@@ -1,0 +1,457 @@
+---
+title: "PLS 206: Introduction to Ordination"
+output:
+  html_document:
+    df_print: paged
+    theme: lumen
+editor_options: 
+  chunk_output_type: console
+---
+
+# Why ordination?
+________________________________________________________________________________
+
+In previous lessons, we covered the use of principle component analysis (PCA) to reduce the dimensionality of numerous, collinear predictor (X) variables. However, the process of dimensionality reduction is not limited just to predictors -- PCA and related techniques can be used to describe major axes of variation in a multivariate response (Y) variable.
+
+*When do are we likely to have a multivariate response variable?* In ecology and other life sciences, species composition data is increasingly used as a response -- think counts of plants occurring in different conservation areas or comparisons of gut microbiomes across different diets. The simplest approach to analyzing this sort of data would be to ask if the first species I found increases in response to some environmental factor, then repeat this univariate model for every species found. However, this approach would be tedious, miss out on key correlations between species, and suffer from multiple comparison problems.
+
+Instead, we often want to evaluate how environmental factors control the abundance of multiple species *simultaneously*. The process of decomposing a species matrix, containing counts of different species (columns) by samples (rows) into a smaller number of gradients is known as __ordination__.
+
+- ordination: how do these species correlate both when one another and with environmental gradients. Detect species abundances across different gradients
+
+Ordination comes in two flavors:
+
+* __Unconstrained Ordination__: Samples are arranged into a smaller number of dimensions, independent of any explanatory variables. Primarily used to visualize information and detect potential gradients. *Hypothesis generating.*  
+  - PCA (euclidiean distance), NMDS- what are the major patterns in my data and how do we visualize them
+
+* __Constrained Ordination__: Samples are arranged onto a number of dimensions that are defined by a another set of environmental variables. Used to test relationships between species abundances and environmental gradients. *Hypothesis testing.*  
+  - what sort of environmental variables best construct gradients
+
+In most applications, these two approaches work in tandem.  
+________________________________________________________________________________
+
+Regardless of the scale or taxa involved, most community (species x sample) data matrices share some general properties:
+
+* They tend to be sparse: a large portion (often the majority) of entries consists of zeros.
+
+* Most species are infrequent. That is, the majority of species is typically present in a minority of locations, and contributes little to the overall abundance.
+
+* The number of factors influencing species composition is potentially very large. For example, forest tree density can be influenced by time since fire, elevation, nutrients, soil depth, soil texture, water availability and many other factors.
+
+* The number of important factors is typically few. That is, a few factors can explain the majority of the explainable variation. Another way of saying this is that the intrinsic dimensionality is low.
+    - this underlies the whole ordination framework
+
+* There is much noise. Even under ideal circumstances, replicate samples will vary substantially from each other. This is largely due to stochastic events and contingency (sensu Parker and Peterson 1998), though observer error may also be appreciable. A good r2=.15, there isn't large predactive ability.
+
+* There is much redundant information: species often share similar distributions. For example, the abundance of Haplohymenium triste gives some insights into the abundance of Anomodon rostratus, and the abundance of Dicranum montanum helps predict the abundance of Leucobryum albidum (Table 1). It is this property of redundancy that allows us to make sense of compositional data.
+
+For any ordination method to be generally useful, it must be able to cope with the above properties of community data matrices.
+
+[From Michael Palmer's Ordination Site](http://ordination.okstate.edu/) 
+
+________________________________________________________________________________
+
+# The Species Matrix
+
+To begin, we'll pull an example species matrix from the `vegan` package in R. This data is from [Väre et al (1995)](https://onlinelibrary.wiley.com/doi/abs/10.2307/3236351), a study of reindeer grazing effects on understory plant communities. 
+
+The two components of this dataset are:
+
+1. A species x sample matrix, "varespec"
+2. A soil chemistry x sample matrix, "varechem"
+
+```{r, warning=FALSE, message = FALSE}
+library(vegan); library(tidyverse); library(viridis)
+
+#reindeer grazing on plants
+#usually you have two matrices, one of the community and one of the environment
+data("varespec") # Community data, vegetative community
+data("varechem") # Environmental data, soil measurements
+
+       
+veg_comm <- varespec
+veg_envt <- varechem
+
+head(veg_comm)
+#each row shows the relative abundance of each species at each site
+head(veg_envt)
+#each row is soil measurements at that site
+```
+
+The `tabasco` function in vegan provides a simple heatmap of species (row) abundances vs. sample number (column). Yellow cells indicate high species abundances, white cells indicate the absence of a species in that sample.
+
+```{r, fig.width=7, fig.height=10}
+vegan::tabasco(veg_comm, col = viridis(12, direction = -1))
+#heat map of what this community looks like
+#columns are the site, rows are the species, the heat map shows abundance of that speices
+#this is a classic pattern, very few abundant species, lots of missing samples
+```
+
+What do you notice about species abundance / incidence in this plot? Is this dataset well-suited to ordination?
+
+## Coenoclines
+
+Relationships between species communities and environmental gradients are given their own name -- *coenoclines*. The code below can be used to plot relationships between species abundance and different environmental variables. What do you notice about species distributions in response to different variables?
+
+```{r}
+coeno_plot <- function(chosen_var){
+  
+  var_to_plot <- veg_envt %>% select(chosen_var)
+  
+  cbind(veg_comm, var_to_plot) %>%
+    gather(key = "species", value = "abundance", -chosen_var) %>%
+    ggplot(aes(x = !! sym(chosen_var),
+               y = abundance, 
+               color = species)) +
+    geom_point() +
+    stat_smooth(se = FALSE, alpha = .5, method = "loess") +
+    ylim(-5, max(veg_comm))
+}
+```
+
+```{r}
+#look at different enviroment gradient drivers
+names(veg_envt)
+coeno_plot("pH")
+#plotly makes interactive plots so that you can mouse over a point or line to see what the data are for that color. you can also de-select in the legend
+```
+
+________________________________________________________________________________
+
+# Distance Measures
+________________________________________________________________________________
+
+Across samples, it is clear that species abundances and instances vary considerably. Across all recorded species, how do we determine how different two samples are? Would we simply sum up the total differences between each column? Or some other approach?
+
+These decisions underpin the importance of __distance measures__ in ordination. Given a series of points across 1 - many dimensions, a distance measure provides a quantitative assessment of how *dissimilar* two samples are. 
+
+### How do we define dissimilarity?
+
+Ecological similarity can be defined in a number of different ways, depending on the distance measure used. These metrics will be sensitive to different patterns in the data -- in analyzing data, you will have to make a choice in how you express similarity. 
+
+Distance in lat-long space is referred to as __Euclidean distance__. Euclidean distance can also be generalized to many dimensions. The same is true for the block-by-block distance, appropriately named __Manhattan distance__ or "taxicab distance", which is the sum of differences in X + sum of differences in Y, etc.
+
+Distance metrics have certain properties:
+
+__Distances are always greater than or equal to 0__
+$$1. d(x, y) \leq 0$$
+
+__A distance of zero means that samples are identical__
+$$2. d(x, y) = 0 \iff x = y$$
+
+__Distances are symmetric; It doesn't matter where your starting point is__
+$$3. d(x, y) = d(y, x)$$
+__Triangle inequalty; a distance between two communities is greater than or equal to the distance between those two communities and a third__
+$$4. d(x, y) \leq d(x, z) + d(z, y)$$
+
+__Note:__ The last property is often violated by several popular ecological distance functions. In this case, these distances are considered "semimetric". Bray-Curtis (Sorenson) dissimilarity is a popular metric that violates this property. 
+
+## What distance measure do I use?
+
+The number of choices of different distance measures can be dizzying -- thankfully, there are some common distance functions used in ecology that are defined by their relationship to species abundance and richness (presence/absence).
+
+The central concerns to choosing a distance metric are:
+
+1. How much weight do I want to give common vs. rare species?
+
+2. What is the *length* of the environmental gradient that I am measuring? Are gradients long enough that species are expected to show unimodal patterns of abundance? Or do I expect linear relationships? 
+  - Does something increase the whole way or is there a little hump showing local abundance
+  
+    * Difficulties in compressing multi-model relationships are often expressed as the "horseshoe effect" in the ordination. [Link to a good StackExchange discussion](https://stats.stackexchange.com/questions/158552/what-is-the-horseshoe-effect-and-or-the-arch-effect-in-pca-correspondence).
+
+3. Am I willing to transform my data? [More on that here](https://link.springer.com/article/10.1007/s004420100716)
+
+In addition to the standard Euclidean distance, two of the most popular dissimilarity measures in ecology are the Bray-Curtis (abundance-weighted) and Jaccard (binary, presence-absence) distances.
+
+Short enviro gradient: linear relationships that either go up or down
+long enviro gradient: a set of humps
+
+__Euclidean__ $$\sqrt{\sum_{i=1}^S (n_{1i} - n_{2i})^2}$$
+distance between things in a cooridnate plane, used in PCA, sensitive to changes in relative abundance
+
+* $n_{1i}$ = abundance of species $i$ in site 1
+* $n_{2i}$ = abundance of species $i$ in site 2
+* $S$ = total number of species
+
+__Bray-Curtis:__ $$\sum_{i=1}^S \frac{2 * min(n_{1i}, n_{2i})}{\sum{n_{1i}} + \sum{n_2i}}$$ 
+sensitive to changes in relative abundance 
+
+* $n_{1i}$ = abundance of species $i$ in site 1
+* $n_{2i}$ = abundance of species $i$ in site 2
+* $S$ = total number of species
+
+__Jaccard:__ $$\frac{A}{A + B+ C}$$
+presence/absence 
+
+* $A:$ number of species in both sites
+* $B:$ number of species in first site only
+* $C:$ number of species in second site only
+
+
+
+```{r}
+# 2 Example ecological communities
+com1 <- data.frame(spA = 25, spB = 50, spC = 10, spD = 0, spE = 0, spF = 0, spG = 0, spH = 0, row.names = "Com 1")
+com2 <- data.frame(spA = 12, spB = 25, spC = 5, spD = 1, spE = 2, spF = 1, spG = 1, spH = 1, row.names = "Com 2")
+(com_sample <- rbind(com1, com2))
+
+# Euclidean distance #
+# Large differences due to relative abundances -- agnostic to species identity
+vegdist(com_sample, method = "euclidean") 
+
+# Bray-Curtis distance #
+# Difference in abundance relative to total abundance of that species, bounded between 0 and 1, 1 = not similar at all
+vegdist(com_sample, method = "bray") 
+# this says tht relatively speaking, these two communities are similar to each other
+# this is preferred to euclidean distance
+
+# Jaccard (binary) distance #
+# 3/8 species shared, bounded between 0 and 1
+vegdist(com_sample, method = "jaccard", binary = TRUE) 
+#shows high dissimilarity because community 2 has several species present that community 1 doesn't have
+```
+
+ 
+________________________________________________________________________________ 
+
+# Unconstrained Ordination
+________________________________________________________________________________
+
+
+
+## Visualizing Dissimilarity Matrices
+
+Similarly to a PCA, distance matrices can be expressed in a smaller number of dimensions through the process of __ordination__. In fact, PCA is a form of ordination that preserves *Euclidean* distances between points. However, if we want to capture similarity between samples using other distance measures, we need to use an alternative method of ordination, such as PCoA (Principal *Coordinates* Analysis) or NMDS (Non-Metric Multidimensional Scaling). Here, we'll discuss use of the latter.
+  - PCA is popular because it's built on correlation and you can do it by hand. But, because community data is sparse/patchy, it's not always the best
+
+## NMDS
+
+NMDS is an increasingly popular __unconstrained ordination__ method to express the non-euclidean relationships between multiple samples. Unlike a PCA, NMDS does not have a closed-form solution, instead relying on computer optimization to express a matrix in a given number of dimensions.
+
+__Advantages__
+
+* No eigenvalues! The distance between in reduced space does not depend on the axis. Distance between points in Y = Distance between points in X
+* Different distance measures can be expressed.
+* Often easier to interpret
+
+__Disadvantages__
+
+* Results from computer optimization. Can converge on different solutions, so plots look different between runs.
+  - it fits a representation of points, shuffles them, then re-tries to fit. Possible that you can get a different looking plot each time
+* Can poorly represent multivariate relationships. Must evaluate model fit using stress and adjust accordingly.
+
+
+
+Let's return to the vegetation patch data, `varespec`. To generate a matrix of distances between points, we can use the `vegdist` function from the `vegan` library. The resulting matrix contains every single pairwise comparison in the data, producing an $n*n$ square matrix with $n\choose{2}$ unique values.
+
+```{r}
+# Bray-curtis dissimilarity between samples
+distmat <- vegan::vegdist(veg_comm, method = "bray")
+# has as many rows and columns as you have samples
+
+# First 5 rows/columns
+as.matrix(distmat)[1:5, 1:5]
+#each row/column is a sample, shows the distance between them
+```
+
+Row names are given here as both column and row names, showing which communities are compared.
+
+Note that this matrix is *symmetric* -- elements in the upper diagonal and lower diagonal are the same, as distance functions are identical no matter the sample order. Elements of the diagonal are all zero, as a community is identical to itself.
+
+To help illustrate the NMDS, we can assign some grouping variable to color the datapopints by. Below, I make a simple group of values above / below the median pH value in the associated environmental dataset.
+
+```{r}
+colors <- c("red", "blue")
+#assign a grouping variable to color the points
+ph_group <- as.factor(if_else(veg_envt$pH < median(veg_envt$pH), "pH < 2.9",  "pH > 2.9"))
+```
+
+NMDS is performed in `vegan` using the `metaMDS` function. Notice that the orientation of points depends strongly on the distance metric we use:
+
+```{r}
+plot_nmds <- function(my_nmds, title){
+  fig <- ordiplot(my_nmds, type = "none", main = title)
+  text(fig, "species", col="lightblue", cex=0.9)
+  points(fig, "sites", pch=21, bg = colors[as.numeric(ph_group)])
+  with(veg_envt, legend("topleft", levels(ph_group), pch = 21,  pt.bg = colors,
+  title = "pH"))
+}
+
+#call NMDS object, tell it what distance measure to use, # of dimensions, # optimization runs
+nmds.eucl <- metaMDS(veg_comm, distance = "euclidean", binary = FALSE, autotransform = FALSE, trace = FALSE)
+plot_nmds(nmds.eucl, "Ordination - Euclidean Distance")
+#red poits have low pH, blue points have high pH
+#words near points show an association between the points and those species
+
+nmds.bray <- metaMDS(veg_comm, distance = "bray", binary = FALSE, autotransform = FALSE, trace = FALSE)
+plot_nmds(nmds.bray, "Ordination - Bray-Curtis Dissimilarity")
+#stronger clustering in space
+
+nmds.jacc <- metaMDS(veg_comm, distance = "jaccard", binary = TRUE, autotransform = FALSE, trace = FALSE)
+plot_nmds(nmds.jacc, "Ordination - Jaccard Dissimilarity")
+# remember jaccard is a binary measure
+
+#conclusion: abundance is important because bray shows a clustering, wheras jaccard is a mush
+
+```
+
+* Are there different patterns, depending on what distance metric is used?
+
+* What might patterns that depend on metric tell us about the process we observe? 
+
+
+
+## NMDS Stress
+
+How well does this two-dimensional representation of points reflect our observed dissimilarities? From our distance matrix object, we know how similar two points are from one another.
+  - evaluation of accuracy
+
+The __stress__ value of an NMDS provides an evaluation of the accuracy of this two-dimensional representation. Stress is a measure based on rank-order discrepancies in distance -- whether a point has a neighbor that is closer in low-dimensional distance than another neighbor which is *known* to be more similar. High stress values indicate that the low-dimensional representation of points has a number of cases where this poor configuration is present.
+  - measure of rank order dissimilarity
+
+The `stressplot` object shows a visualization of this stress, where observed community distances on the X-axis are compared to ordination (xy-coordinate) distances on the Y-axis. Note that the non-linear fit smoothing line has a higher $R^2$ than the linear one -- rank-order differences in points are emphasized in NMDS.
+
+```{r}
+# Stress value
+nmds.bray$stress
+# a stress value of .1 or less is great, values of more than .2 aren't great
+
+# Visualization of stress
+stressplot(nmds.bray)
+#y axis physical distance in 2-D space 
+#x axis is observed distance measured
+ 
+```
+
+## The NMDS object
+
+If you want to create your plots, the observations and species loadings can be extracted from the NMDS object. Like a PCA, correlations between points and species indicate how well changes in the abundance/occurrence of different species drive differences between samples.
+
+```{r}
+# NMDS points -- X and Y coordinates of the observed community samples
+head(nmds.bray$points)
+
+# NMDS species -- the relationships between species loadings and the ordination figure 
+head(nmds.bray$species)
+```
+
+## Adding environmental variables
+
+In some ecological applications, we may only have data on species assemblages and no environmental context. If we're interested in seeing whether communities are assembling across linear gradients, __indirect gradient analysis__ may be used to capture these patterns.
+
+However, in many cases, samples are accompanied by measurements of 1 or more variables that capture environmental gradients. To visualize how these environmental variables correlate with ordination, `envfit` will construct permutation-based vectors. Strong correlations have longer arrows, while weaker correlations have smaller ones.
+
+A significance test can be used to determine how ordination structure explains variation in a given environmental factor, though note that this does not provide a strong test of whether these variables drive community dissimilarity observed.
+
+```{r}
+# Environmental Vectors -- projecting environmental variables on an existing NMDS object
+env_vec <- envfit(nmds.bray, veg_envt)
+env_vec
+
+# Adding to previous plot
+plot_nmds(nmds.bray, "Ordination - Bray-Curtis Dissimilarity")
+plot(env_vec)
+```
+
+________________________________________________________________________________
+
+# Constrained Ordination 
+________________________________________________________________________________
+
+The counterpart to linear regression in ordination is known as *constrained* ordination. Rather than trying to visualize relationships between species and samples, constrained ordination attempts to explain the maximum variation in species composition.
+
+Constrained ordination combines both multiple linear regression and PCA to estimate how environmental variables can be combined to produce environmental gradients that capture changes in species abundance.
+
+Constrained ordination produces both a matrix of explained variation that can be visualized through a PCA, as well as a matrix of unexplained variation that may be visualized as a separate PCA.
+
+### Types of Constrained Ordination
+
+* RDA - Redundancy Analysis; Community dissimilarity based on Euclidean distance. (PCA of constrained)
+* CCA - Canonical Correspondence Analysis; Community dissimilarity based on Chi-square distance
+* db-RDA - distance-based Redundancy Analysis: Community dissimilarity based on a chosen distance metric (newest of the 3)
+
+## Fitting the RDA object
+
+`vegan` will fit all three versions of ordination using `rda` (RDA), `cca` (CCA), and `capscale` or `dbrda` (db-RDA). Due to similarities in their underlying methods, all objects created by these functions share similar nomenclature, despite terms varying in other sources.
+
+### Calling `rda`
+
+RDA can be called like any linear model. In this case, we're estimating our community, `veg_comm` as a function of all our environmental variables `~ ., data = veg_envt` 
+
+The summary object of an RDA is quite large, but contains a wealth of useful information. Key points to notice are:
+
+* Variance (Inertia) partitioning: how much of the observed community disimilarity can we explain using our environmental variables?
+
+* Importance of components: How are axes in constrained variation (RDA) and unconstrained variation (PC) composed? Like a PCA, large eigenvalues describe important axes of variation.  
+
+* Site and species scores: Similar to interpretation of a PCA.
+
+```{r}
+veg_rda <- vegan::rda(veg_comm ~ ., data = veg_envt)
+summary(veg_rda)
+```
+
+### Variance Decomposition of RDA
+
+Significance testing can be performed using a permutation-based procedure. Here, random re-samples of the data (without replacement) are used to determine whether the total variation explained differs from random expectation. Like a univariate linear regression, adding additional variables can only increase R^2 -- when the number of environmental variables matches or exceeds the number of species, we will achieve a perfect fit. 
+
+```{r}
+anova(veg_rda)
+```
+
+$R^2$ = 1459.89 / (1459.89 + 365.77) = 0.80
+
+### Constrained RDA Axes
+
+Like a PCA, the eigenvalues of RDA axes represent the fraction of variance that is explained by a given axis. In this case, we see the presence of two large RDA axes, indicating the presence of two strong environmental gradients that were observed to correlate with species abundance.
+
+```{r}
+veg_rda$CCA$eig
+screeplot(veg_rda)
+```
+
+### Unconstrained PCA Axes (Residuals)
+
+Eigenvalues of the unconstrained variation can also be interesting -- large variance across single dimensions reflect strong gradients in the residuals. These can reflect unobserved ecological processes that we may have missed in our sampling.
+
+```{r}
+veg_rda$CA$eig
+```
+
+### Fitted values
+
+Fitted (estimated) species abundances across sites can be called using predict()
+
+```{r}
+head(predict(veg_rda)[,1:5])
+```
+
+### Visualizing the ordination
+
+```{r}
+ordiplot(veg_rda)
+```
+
+```{r}
+vif.cca(veg_rda)
+```
+
+```{r}
+step_mod <- ordistep(veg_rda, trace = FALSE)
+summary(step_mod)
+```
+
+$R^2$ = 1050.72 / (1050.72 + 774.94) = 0.58
+
+```{r}
+plot(step_mod)
+screeplot(step_mod)
+```
+
+```{r}
+var_comp <- data.frame(inertcomp(veg_rda))
+var_comp$frac <- var_comp$CCA / (var_comp$CCA + var_comp$CA)
+var_comp$MeanCover <- colMeans(veg_comm)
+var_comp <- var_comp[order(var_comp$MeanCover, decreasing = TRUE),]
+var_comp
+```

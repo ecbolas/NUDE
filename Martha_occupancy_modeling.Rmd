@@ -1,0 +1,329 @@
+---
+title: "Occupancy Models"
+author: "Martha Zillig"
+date: "11/30/2019"
+output:
+  html_document:
+    df_print: paged
+    theme: lumen
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Occupancy models are a type of hierarchical model 
+
+#### Holup, what's a hierarchical model? 
+
+Hierarchical models are a sequence of related probability models that are usually ordered by their conditional probability structure. This means that the probability structure in one part of the model is dependent on the probability structure in the previous part of the model. The parts of a hierarchical model are linked through *conditionally dependent random variables*, which is a confusing way of saying they are linked through something called *latent* variables. 
+
+#### Latent Variables 
+As ecologists, we often want to make inferences about the state of nature. What's the distribution of Yellow Rumped Warblers? How many Spotted Skunks are on Santa Cruz Island? Those states of nature cannot be observed directly, but instead arise from processes that are hidden. If we were all-knowing Gods who could see where every Yellow Rumped Warbler was on earth at any given time we wouldn't have a problem, but because we are lowly ecologists, we must make inferences about these unobservable states and hidden processes through quantities that we *can* observe. We refer to unobservable states of nature as **latent**, and we attempt to estimate unobservable, latent quantities in hierarchical models.  
+
+#### Why should you used an occupancy model? 
+
+Folks who use occupancy models are concerned with something called detection probability. Detection probability is the probability that you can detect a species given it is present at a site. If you wanted to model a species distribution *without* using an occupancy model, you would have to assume your ability to detect the species was absolutely perfect, because in a non-occupancy species distribution model, there is not way to account for less than perfect detection. This means that your estimates of species distribution will almost always be underestimated.
+Occupancy models account for imperfect detection by splitting estimates of occupancy and detection probability up into two sub-models (hence the hierarchical structure). There are other problems with not accounting for imperfect detection, but I will not get into those now (see Kery 2010 Chapter 20 for an excellent discussion). 
+
+
+#### An occupancy model has **two** sub-models:
+
+1. One part describes the thing we are interested in (some true state of nature)
+2. The second part describes the measurement error (this is where the actual data is and where detection probability is modeled)
+
+### Occupancy models: the natural choice for modeling species distributions 
+
+#### Let's build an occupancy model 
+
+Imagine you are a bird biologist. You have 10 sites that you visit three times during the breeding season (May to July), and you record the presence or absence of Warbling Vireos at each site. You are interested in determining if vegetation height effects warbling vireo occupancy. You suspect that Warbling Vireos prefer taller vegetation.  
+
+![*Vireo gilvus*](jpegs/WAVI.jpg)
+
+Your data might look something like this where 1 = detected and 0 = undetected, and you visited each site 3 times. 
+```{r, warning = F, message= F}
+library(tidyverse)
+df1 <- read_csv("fake_data1.csv")
+
+head(df1)
+
+
+```
+
+There is likely some error in your ability to detect a species though.
+
+Here's a fun example. Could you find the leopard if you were looking through your binoculars at this mountain side? 
+
+
+![](jpegs/lepord1.JPG)
+
+If you didn't see it that means we have some error in the detection part of the model. Specifically, the error partially arises from the fact that **a detection = 0 could actually mean two things**; the leopard was not there at all, or the leopard was there but you didn't see it. We account for detection that is less than 100% by modeling it directly in the observation part of the model. 
+
+![](jpegs/lepord2.JPG)
+
+***
+
+### Observation Model (Detection Sub-Model)
+
+We account for >100% detection probability in an occupancy model by introducing a new variable, which is the true presence/absence of a site. 
+
+Let's call $y_{i}$ our binary observations of presence or absence at site *i*. This is the data we went out and collected, and could look something like the example table above. Our **new** variable is $z_{i}$, which is the ***true*** presence/absence at site *i*. It is the *true* occupancy state that exists in nature, whether we are there to measure it or not, and it is an example of a latent variable. 
+
+We visited each of the sites 3 times during the breeding season. For the purposed of this model, the number of times we visited a site will be denoted as *J*. 
+
+This part of the model is called the "observation model" and the standard observation model is a Bernoulli model with a success probability of $z_{i}p$: 
+
+$y_{i}|z_{i} \sim Binominal(J,z_{i}p)$
+
+Where *p* is the probability of detecting the species **given it is present**. For the time being, lets pretend that if the species is truly absent, detection will always = 0 (in other words, no false positives, as this is difficult, but not impossible, to account for).
+
+If you have covariates that you think might effect the detection process, you can use a logit link to model them.  For example, for bird surveys we might use wind (it's hard to hear birds when its windy) or time of day (birds quiet down as the day progresses) as a detection covariate. For your warbling vireo project, you collected data on wind speed at every visit at every site. Including that in the model might look something like this: 
+
+$logit(z_{i}p) = \alpha_{0} + wind*x_{ij}$
+
+***
+
+### State Model (Occupancy Sub-Model)
+
+We also want to model this latent variable we've been talking about, or the *true presence/absence* of our site, $z_{i}$. This is modeled with a Bernoulli distribution with a binary response: 
+
+$z_{i} \sim Bernoulli(\psi_{i})$ where $\psi = Pr(z_{i} = 1)$, or the probability that the true occupancy is equal to 1. 
+
+During your surveys, you collected data on the height of vegetation at each site. You think vegetation height might effect occupancy of warbling vireos. You can model covariates you think might contribute to occupancy using the *logit* link on the state part of our model. 
+
+$logit(\psi_{i}) = \beta_{0} + VegHt*x_{i}$
+
+***
+
+### Let's Put it All Together 
+
+Here is what our full occupancy model for the warbling vireo project might look like, with covariates on both the detection and occupancy sub-models. 
+
+$y_{i}|z_{i} \sim Binominal(J,z_{i}p)$  *Detection Sub-model*     
+$logit(z_{i}p) = \alpha_{0} + wind*x_{ij}$  
+$z_{i} \sim Bernoulli(\psi_{i})$   *Occupancy Sub-Model*     
+$logit(\psi_{i}) = \beta_{0} + VegHt*x_{i}$  
+
+***
+
+### Assumptions of an Occupancy Model
+
+There are many assumptions inherent in an occupancy model, and before you decide to use one with your data, it's important to understand what they are. 
+
+1. **Closure Assumption**: The presence/absence of a site does not change over the course of the study. 
+2. **No false positives**: This is important, as its violation can lead to strong bias in estimating occupancy. 
+3. **Independence of occurrence and independence of detection**: Basically, occupancy at one site should not effect occupancy at the next, and detection probably at a single site should be independent across visits. 
+4. **Homogeneity of detection probability**: There is no *un-modeled* site-specific detection heterogeneity
+5. **Parametric Assumptions**: Basically the idea that the two Bernoulli or Binominal variables are a reasonable abstraction of reality. This sort of assumption is one we make anytime we decide a distribution. 
+
+There are ways to deal with a lot of these assumption violations by changing your model's structure. One big problem I deal with is violation of the closure assumption. I'm not going to get into how I'm attempting to deal with it today, but let's just say it makes things a lot more complicated! 
+
+
+### The Package Unmarked 
+
+Let's try a very simple occupancy model together using the package `Unmarked`, which uses a frequentist framework. 
+
+Let's call in some fake data. This is from Kery and Royle's amazing book ["Applied Heirarchial Modeling in Ecology"](https://www.mbr-pwrc.usgs.gov/pubanalysis/keryroylebook/) (2016, Chapter 10). Let's pretend this data is for our Warbling Vireo project (it's actually just simulated). Data for unmarked models needs to be in an `unmarkedFrame`. I'm not going to show how this data was simulated, but it is important to know it was complied into an `unmarkedFrame` using the function `unmarkedFrameOccu`, an `unmarkedFrame` specific to occupancy models. 
+
+```{r, warning = F, message = F}
+
+library(unmarked)
+umf_kr <- readRDS("kr_umf.rds")
+
+#Let't take a look at this data
+
+summary(umf_kr)
+
+```
+
+
+You can see there are both "Site-Level Covariates " and "Observation Level Covariates". These pertain to the two parts of our occupancy model. The site level covariates (vegetation height and habitat) are things we think might effect site occupancy, and the observational level covariates (wind speed and time) are things we think might effect our ability to detect Warbling Vireos. We include them as covariates on different parts of the model. You could also include the same covariate in both parts of the model if you thought it was ecologically relevant. 
+
+
+Let's run an occupancy model in `Unmarked` using this data. We will use the `occu` function from the `Unmarked` package which is for occupancy models. In `Unmarked`, covariates on the detection part of the model go first, then covariates on the state part of the model. 
+
+```{r, warning = F, message = F}
+
+#Let's say we hypothesize that wind effects detection probability and vegetation height effects occupancy. 
+
+summary(fm.occ1 <- occu(~wind ~vegHt, data=umf_kr)) 
+plogis(2.432)
+
+ 
+```
+Take a look at the p-values. We can see here that wind has a significant negative relationship with detection (p>.0001). This makes sense. Speaking from personal experience it's much harder to detect birds on windy days. It also seems that vegetation height has a significant positive effect on occupancy of warbling vireos (p = 0.003). Perhaps meaning that warbling vireos prefer taller vegetation. Hey, your hypothesis was right! 
+
+
+### Same model using JAGS
+
+JAGS is a MCMC sampler that using a Bayesian framework and the BUGS language. This is generally what I code in, so it's what I'm most familiar with. I like JAGS because if you know how the model should look using math (which we do, see below) it's very easy to write it out in JAGS code. 
+
+Here's the math of the model: 
+
+$y_{i}|z_{i} \sim Binominal(J,z_{i}p)$  
+$logit(z_{i}p) = \alpha_{0} + wind*x_{ij}$  
+$z_{i} \sim Bernoulli(\psi_{i})$  
+$logit(\psi_{i}) = \beta_{0} + Elevation*x_{i}$ 
+
+Let's model it using JAGS! 
+```{r, message = F}
+
+library(jagsUI)
+
+#save(data, y, file="martha_NUDE_files/jags_data.RData")
+
+load("jags_data.rds")
+
+#this is how the data file was compiled in JAGS
+#data <- list(y=y, wind = wind, vegHt=vegHt, M = nrow(y), J=ncol(y))
+
+
+#Specify the model in BUGS language 
+
+cat("
+    model{
+    
+    for (i in 1:M){   #loop over sites 
+      z[i] ~ dbern(psi[i]) #state model
+      logit(psi[i]) <- beta0 + beta1*vegHt[i]
+      
+      for (j in 1:J) {  #loop over visits 
+        y[i,j] ~ dbin(p[i,j], z[i]) #detection model
+        logit(p[i,j]) <- alpha0 + beta2*wind[i,j]
+      }
+    }
+      
+  #priors (I picked non-informative priors)
+    alpha0 ~ dlogis(0,1)
+    beta0 ~ dnorm(0,1)
+    beta1 ~ dnorm(0,1)
+    beta2 ~ dnorm(0,1)
+    }
+    ", file = "test_model.txt")
+
+#Tell JAGS the parameters to monitor, or the parameters we are interested in:
+
+#alpha0 and beta0 corrospond to the intercepts. beta1 is vegetation height and beta2 is windspeed. 
+
+params <- c("alpha0", "beta0", "beta1", "beta2")
+
+#important to supply initial values for the latent varaible (the true presence/absence)
+
+zst <- apply(y,1,max)
+
+inits <- function(){list(z = zst, alpha1= runif(1), beta1 = runif(1))}
+
+#not actually going to run model here, but code is below
+
+#fit1_jags <- jags(data = data, model.file = "test_model.txt", inits = inits, parameters.to.save = params, n.chains = 3, n.iter = 5000, n.burnin = 1000)
+
+#saveRDS(fit1_jags, "martha_NUDE_files/fit1.rds")
+
+fit1_jags<- readRDS("martha_NUDE_files/fit1.rds")
+
+print(fit1_jags)
+
+whiskerplot(fit1_jags, parameters = c("beta1", "beta2"))
+
+```
+
+Just like our frequentist models run in `Unmarked` our Bayesian model shows very similar results. Both wind and vegetation height are highly significant; wind (beta2) is negatively related to detection probability, and vegetation height (beta1) is positively related to occupancy. 
+
+***
+
+## N-Mixture Models 
+
+Let's say you went one step further with your Warbling Vireo study. Instead of just recording if Warbling Vireos were present or absent at each site, you counted how many you saw at each site. Now in addition to occupancy, you also have data on **abundance**. Modeling abundance can give you a lot more information than just modeling occupancy, and luckily, there is a relatively simple addition to the occupancy model we discussed above that lets you do it. 
+
+Let's take a look at some abundance data for Warbling Vireos: 
+
+```{r, message=F}
+""
+abund <- read_csv("fake_data2.csv")
+
+head(abund)
+
+```
+
+When modeling abundance, we need have replicated counts of unmarked individuals in two dimensions; we need multiple sites and we need to have visited each site multiple times. It is important to not count the same individual twice during a single visit; this is one of the fundamental types of error in an abundance model, and depending on the species you are surveying, there are various methods to achieve this. Luckily (or simply because I wrote it this way...) the data we've collected is replicated across sites and across visits, so we are ready to build an abundance model! 
+
+***
+
+#### The N-Mixture Model
+
+Usually, we call occupancy models that model abundance a *N-Mixture Model*. $N$ in this case is our latent variable, which is the *true* abundance at a single site during a single visit. The word "mixture" comes from the fact that the likelihood is a mixture of binomials each with a different sample size of $N$. Like the occupancy model we discussed above, an N-Mixture Model has two parts: the first part models detection probability using the same old binomial distribution, and the second part models abundance using a Poisson distribution. The Poisson distribution is the work-horse when modeling abundance, as it is has considerable flexibility to capture a wide variety of patterns in $N$, the true abundance at a single site during a single visit. 
+
+Here is our simple N-Mixture model written out in math:
+
+1. State Process (part that models abundance) $N_{i} \sim Poisson(\lambda)$
+2. Observation process (detection probability) $C_{ij}|N_{i} \sim Binominal(N_{i},p)$
+
+It's very similar to our occupancy model, but has a few differences. First, $\lambda$ here is our expected abundance, or the mean abundance over all sites, whether we sampled them or not. $C_{ij}$ is our real data that might look like the table above. $p$ is used a bit differently here than it was in our occupancy model. In an N-Mixture model, $p$ is our *per-individual detection probability*. Remember in an occupancy model $p$ is the probability of detecting a species, given it is present. 
+
+Just like we did with our Warbling Vireo occupancy data, we can model covariates on both parts of the model through the use of a link function. The link function for a Binomial distribution is one we are familiar with, $logit$. The link function for a Poisson distribution is a $log$ link. Adding vegetation height and wind speed into this N-Mixture model would look like this: 
+
+1. State Process:  
+$N_{i} \sim Poisson(\lambda)$  
+$log(\lambda) = \beta_{0} + Elevation*x_{i}$  
+2. Observation Process:  
+$C_{ij}|N_{i} \sim Binominal(N_{i},p)$  
+$logit(p) = \alpha_{0} + wind*x_{ij}$
+
+***
+
+#### Assumption of an N-Mixture Model:
+
+There are of course many assumptions inherent in an N-Mixture model. Many are the same as those inherent in an occupancy model, but there are a few additional assumptions:
+
+1. **Closure Assumption**: All within-site variation in our counts of individuals is attributable to detection probability. Individuals did not move in our out of the site between visits.
+2. **No false positive errors**: No other species is counted accidentally as our target species, and the same individual is not counted twice within the same visit. 
+3. **Independence of detection**: Individuals are detected independently of each other. If individuals travel in groups or pairs or flocks, detection of one individual makes it more likely the others are detected as well. That sort of system would not work well for an N-Mixture model. 
+4. **Homogeneity of detection among $N$ individuals**: All individuals present at a single site during a single visit have identical detection probability. 
+5. **Parametric modeling assumption**
+
+***
+
+### There's so much more you can do!
+
+This was a pretty basic introduction to occupancy and N-mixture models. My goal in writing this post was to describe these two models in more understandable terms, as I often find that authors have a (understandably) difficult time describing basic modeling concepts. There are of course an enormous amount of ways to build upon the models I have introduced. For example, there are community occupancy models that examine occupancy on a community (instead of single species) level. You can use occupancy models to predict suitable habitats for species, model behaviroal responses, or examine occupancy at multiple scales at once. I use N-Mixture models in an attempt to determine if bird species are undergoing elevational range-shifts due to climate change. 
+
+
+#### Further Readings 
+
+Here are some of my favorite resources for better understanding heirarchial models and occupancy models in particular. I cannot reccomend Kery and Royle (2016) highly enough for those interested in occupancy modeling of any sort. I've already pre-ordered their second volume! Hobbs and Hooten (2015) is an extreamly well-written introduction to Bayesian modeling methods. It contains hardly any modeling code, but does a great job explaining difficult concepts. 
+
+Marc Kery and J. Andrew Royle. (2016) *Applied Hierarchial Modeling in Ecology: Analysis of distrubtion, abundance and species richness in R and BUGS, Volume 1.* Academic Press, Elsever Inc. 
+
+N. Thompson Hobbs and Mevin B. Hooten. (2015) *Bayesian Models: A statistical primer for Ecologists.* Princeton University Press. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

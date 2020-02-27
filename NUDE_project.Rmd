@@ -1,0 +1,41 @@
+---
+title: "NUDE_project"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("...")
+```
+
+#READ ME
+This is notes on the full group conversation about ways to do this
+
+*Questions:*
+1. How does the recruitment of all species as a function of time vary with (1) assemblage diversity, (2) bare space of assemblage, and (3) the percentage of native species in those assemblages.
+
+2.Does invasive species recruitment early in the experiment vary with (1) assemblage diversity, (2) bare space of assemblage, and (3) the percentage of native species in those assemblages. This will only be limited to a subset of the data where this information is available.
+
+Evan: looking at the rate of increase, log(avg. number cumulative recruits) ~ log(time). Evan did this bc it looked like a species accumulation curve, this is a common approach for SAC
+
+Step 1: Look at raw data
+- is it counts or what structure?
+- are there treatments to think about?
+
+Step 2: Plot the data
+- look at histograms of each variable- helps decide whether to bin or treat as continuous
+  - skim (in skimmer): gives a bunch of little histograms of your data
+- look at collinearity 
+- look for shapes of curves to tell us the distribution
+
+Step 3: Decide the distribution (Q1)
+- counts vs. proportions: think about the data generating process
+- most people went with poisson/negative-binomial (even if you have overdispersion in your original data, it may be eaten up in the actual model)
+  - start with poisson, it didn't fit. then people went to negative-binomial or zero-inflated. This second choice is going to be influenced by your understanding of biological processes
+  - ZI worked for Eric and Cathy because they did new recruits since last time step (cumulative recruits from t-1 as a predictor for recruits in t)
+- non-linear model: logistic curve- the idea that the total number of recruits has an asymptote, also did this because data were autocorrelated
+- time variable: time since the experiment started vs. time as a seasonal variable
+  - they did time as factor, split data into 6 chunks, fit them each independently
+  - include a polynomial and the linear term (time^2 (a polynomial)) because time vs new recruits shows a polynomial trend (Eric)- it was mostly linear, with a little curve at the top, so included time and time^2

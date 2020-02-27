@@ -15,8 +15,10 @@ library(lme4)
 setwd("...")
 
 #Question 1
+#read in data
 dataT<- read.csv("cumrecruitTreatments_MM.csv")
 names(dataT)
+#fix data
 #convert block to factor, percents to decimals
 dataT$Block<- as.factor(dataT$Block)
 dataT$TileID<- as.factor(dataT$"Treatment.number")
@@ -25,8 +27,8 @@ dataT$InitialNative<- (dataT$InitialNative)/100
 str(dataT)
 
 
+###start by visualizing to know what matters vs make models with and without blocks and then decide
 #Does block need to be included in our model?
-#start by visualizing to know what matters vs make models with and without blocks and then decide
 
 #visualize
 ggplot(data=dataT, aes(x=Time, y = Recruits, color = InitialNative)) +
